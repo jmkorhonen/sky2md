@@ -389,14 +389,14 @@ function richText(text, facets, o) {
     for (const feat of f.features) {
       const type = feat.$type || '';
       if (type.endsWith('#link') && isHttp(feat.uri)) {
-        md = (o.fullUrls && /(\.\.\.|…)$/.test(seg)) ? `<${mdUrl(feat.uri)}>` : link(label(seg), feat.uri);
+        md = o.plainText ? seg : (o.fullUrls && /(\.\.\.|…)$/.test(seg)) ? `<${mdUrl(feat.uri)}>` : link(label(seg), feat.uri);
       } else if (type.endsWith('#mention') && feat.did) {
         const text = o.stripAt ? seg.replace(/^[@＠]/, '') : seg;
         const handle = /^@[\w.-]+\.[\w-]+$/.test(seg) && !o.didLinks ? seg.slice(1) : feat.did;
-        md = o.linkMentions ? link(label(text), `${WEB}/profile/${handle}`) : plain(text);
+        md = o.linkMentions && !o.plainText ? link(label(text), `${WEB}/profile/${handle}`) : plain(text);
       } else if (type.endsWith('#tag') && feat.tag) {
         const text = o.stripHash ? seg.replace(/^[#＃]/, '') : seg;
-        md = o.linkTags ? link(label(text), `${WEB}/hashtag/${encodeURIComponent(feat.tag)}`) : plain(text);
+        md = o.linkTags && !o.plainText ? link(label(text), `${WEB}/hashtag/${encodeURIComponent(feat.tag)}`) : plain(text);
       }
       if (md) break;
     }
@@ -552,8 +552,11 @@ const sortByTime = nodes => nodes.slice().sort((a, b) => createdAt(a.post).local
 function threadTitle(data, o, first) {
   const name = nameOf(data.author);
   if (o.title !== 'author') {
-    let text = (first.post.record && first.post.record.text) || '';
-    if (o.stripCounters) text = stripCounter(text, [], data.chain.indexOf(first) + 1).text;
+    const rec = first.post.record || {};
+    let text = rec.text || '', facets = rec.facets || [];
+    if (o.stripCounters) ({ text, facets } = stripCounter(text, facets, data.chain.indexOf(first) + 1));
+    // Same @/# handling as the post body, but as plain text: the title is escaped later and never linked.
+    text = richText(text, facets, { ...o, plainText: true, escape: false });
     let line = oneLine(convertEmoji(text.trim().split('\n')[0].replace(/🧵/gu, ''), o.emoji));
     if (line.length > 80) line = line.slice(0, 80).replace(/\s+\S*$/, '') + '…';
     if (line) return line;

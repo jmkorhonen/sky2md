@@ -86,6 +86,21 @@ test('emoji option applies to titles, names and text but never inside URLs', () 
   assert.ok(buildMarkdown(data, { emoji: 'shortcode' }).includes('# :tada: Launch day see :thumbsup:.ws'));
 });
 
+test('title gets the same @, # and emoji treatment as the text', () => {
+  const text = '🚀 Big #News from @bob.test at example.com…\nmore 1/3';
+  const facets = [
+    facet(text, '#News', { $type: 'app.bsky.richtext.facet#tag', tag: 'News' }),
+    facet(text, '@bob.test', { $type: 'app.bsky.richtext.facet#mention', did: 'did:plc:bob' }),
+    facet(text, 'example.com…', { $type: 'app.bsky.richtext.facet#link', uri: 'https://example.com/long' }),
+  ];
+  const data = thread(node(alice, text, { facets }), node(alice, 'next 2/3'));
+  const title = opts => buildMarkdown(data, { byline: false, frontMatter: true, ...opts }).split('\n').filter(l => /^(# |title:)/.test(l));
+  assert.deepEqual(title({ stripHash: true, stripAt: true, emoji: 'strip' }),
+    ['title: "Big News from bob.test at example.com…"', '# Big News from bob.test at example.com…']);
+  assert.deepEqual(title({ linkTags: true, emoji: 'shortcode' }),
+    ['title: ":rocket: Big #News from @bob.test at example.com…"', '# :rocket: Big #News from @bob.test at example.com…']);
+});
+
 test('heading level sets the title and the numbered post headings below it', () => {
   const data = thread(node(alice, 'One'), node(alice, 'Two'));
   const md = buildMarkdown(data, { headingLevel: '3', separator: 'heading', byline: false });
