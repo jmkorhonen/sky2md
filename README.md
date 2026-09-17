@@ -3,6 +3,8 @@
 Convert a Bluesky thread into Markdown you can copy or download. Think
 [SkyWriter](https://skywriter.blue), but the output is Markdown instead of a web page.
 
+**Use it: <https://jmkorhonen.github.io/sky2md/>**
+
 Paste the link to any post in a thread; sky2md finds the beginning of the author's
 self-reply chain, follows it to the end, and renders it as one document.
 
@@ -14,12 +16,13 @@ self-reply chain, follows it to the end, and renders it as one document.
 - Optional timestamp + permalink under each post
 - Removes `1/5`-style thread counters (only when the number matches the post's position)
 - Images and video thumbnails: embed, link, alt text only, or omit
-- Link cards, quoted posts, GIFs, feeds/lists/starter packs
+- Image galleries, link cards, quoted posts, GIFs, feeds/lists/starter packs
 - Restores full URLs where Bluesky shortened them; optional @mention and #hashtag links
 - Optional permanent DID-based links that survive handle changes
 - Escapes Markdown special characters in post text, keeps line breaks
 - Live preview, copy to clipboard, download as `.md`; the output is editable
 - Options are remembered in the browser; `?url=<post link>` converts on load (bookmarkable)
+- Bookmarklet (in the page footer): click it while viewing a Bluesky post to convert its thread
 
 ## Design: nothing to maintain
 
@@ -34,6 +37,10 @@ That means:
 - **Anywhere else:** copy `index.html` to any static web host, under any name or path.
 - **Offline copy:** save `index.html` to disk and open it; it works from `file://` too
   (internet access is still needed to fetch threads).
+
+Bluesky adds new post features now and then. Unknown embed types are skipped rather than
+breaking anything, and any embed that carries a list of images is rendered whatever it is
+called, so new media types tend to work without changes.
 
 If Bluesky ever moves its public API, change the `API` constant at the top of the script.
 Set `REPO_URL` there to show a "Source" link in the footer.
@@ -71,6 +78,14 @@ Try a real thread from the command line:
 
 ```bash
 node tools/live.js https://bsky.app/profile/bsky.app/post/3mupeo3so622k '{"frontMatter":true}'
+```
+
+`tools/sweep.js` converts recent threads from a handful of accounts under several option
+sets and reports crashes, suspicious output, and which embed types it met — a quick way to
+find out whether Bluesky has introduced something new:
+
+```bash
+node tools/sweep.js
 ```
 
 ## License

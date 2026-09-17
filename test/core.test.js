@@ -107,6 +107,21 @@ test('buildMarkdown: embeds, quotes, front matter and options', () => {
   assert.ok(buildMarkdown(data, { didLinks: true }).includes('https://bsky.app/profile/did:plc:alice/post/'));
 });
 
+test('galleries and unknown future media lists render as images', () => {
+  const gallery = { $type: 'app.bsky.embed.gallery#view', items: [
+    { $type: 'app.bsky.embed.gallery#viewImage', fullsize: 'https://cdn.test/1.jpg', thumbnail: 'https://cdn.test/1t.jpg', alt: 'one' },
+    { $type: 'app.bsky.embed.gallery#viewVideo', thumbnail: 'https://cdn.test/v.jpg' },
+    { $type: 'app.bsky.embed.gallery#somethingElse' },
+  ] };
+  const md = buildMarkdown(thread(node(alice, 'Pics', { embed: gallery })), { title: 'none', byline: false });
+  const rkey = md.match(/post\/(k\d+)/)[1];
+  assert.equal(md, `Pics\n\n![one](https://cdn.test/1.jpg)\n[![Video](https://cdn.test/v.jpg)](https://bsky.app/profile/alice.test/post/${rkey})\n`);
+  const future = { $type: 'app.bsky.embed.somethingNew#view', images: [{ fullsize: 'https://cdn.test/n.jpg', alt: '' }] };
+  assert.ok(buildMarkdown(thread(node(alice, 'New', { embed: future })), {}).includes('![](https://cdn.test/n.jpg)'));
+  const unknown = { $type: 'app.bsky.embed.mystery#view', payload: 42 };
+  assert.equal(buildMarkdown(thread(node(alice, 'Hm', { embed: unknown })), { title: 'none', byline: false }), 'Hm\n');
+});
+
 test('buildMarkdown: conversation mode nests replies, fromLinked slices', () => {
   const reply = node(bob, 'Nice thread!', { replies: [node(alice, 'Thanks')] });
   const data = thread(node(alice, 'One', { replies: [reply] }), node(alice, 'Two'));
