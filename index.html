@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sky2md — Bluesky thread to Markdown</title>
+<meta name="description" content="Convert a Bluesky thread into Markdown you can copy or download. Runs entirely in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230a7aff'/%3E%3Ctext x='50' y='68' font-family='monospace' font-weight='700' font-size='46' text-anchor='middle' fill='white'%3EM%E2%86%93%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f8fb; --panel: #ffffff; --text: #16202c; --muted: #5b6878;
+  --border: #d5dce6; --accent: #0a7aff; --accent-text: #ffffff; --error: #b3261e;
+  --code-bg: #eef2f7;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10151c; --panel: #18202b; --text: #e6ebf2; --muted: #9aa7b8;
+    --border: #2c3848; --accent: #4a9dff; --accent-text: #08121f; --error: #ff8a80;
+    --code-bg: #111821;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+header h1 { margin: 8px 0 0; font-size: 1.6rem; }
+header p { margin: 2px 0 16px; color: var(--muted); }
+a { color: var(--accent); }
+form#urlForm { display: flex; gap: 8px; flex-wrap: wrap; }
+input[type=url], input[type=text], select, textarea, button {
+  font: inherit; color: inherit; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+#url { flex: 1 1 320px; min-width: 0; padding: 10px 12px; }
+button { padding: 8px 14px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; padding: 10px 18px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#status { min-height: 1.5em; margin: 8px 0; color: var(--muted); }
+#status.error { color: var(--error); }
+main { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 800px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+  main > section { order: -1; }
+  #out, #preview { height: 55vh; }
+}
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+#options fieldset { border: 0; border-top: 1px solid var(--border); margin: 0; padding: 10px 0; }
+#options fieldset:first-of-type { border-top: 0; padding-top: 0; }
+#options legend { font-weight: 600; font-size: .8rem; padding: 0; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+#options label { display: block; margin: 6px 0; font-size: .92rem; }
+#options label.check { display: flex; gap: 8px; align-items: flex-start; }
+#options label.check input { margin-top: 5px; }
+#options select { display: block; width: 100%; padding: 6px 8px; margin-top: 2px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.tabs { display: flex; margin-right: auto; }
+.tabs button { border-radius: 0; margin-left: -1px; }
+.tabs button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.tabs button:last-child { border-radius: 0 8px 8px 0; }
+.tabs button[aria-pressed=true] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+#out { width: 100%; height: 70vh; min-height: 320px; resize: vertical; padding: 12px; font: 14px/1.5 var(--mono); tab-size: 2; }
+#preview { height: 70vh; min-height: 320px; overflow: auto; padding: 4px 16px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
+#preview img { max-width: 100%; max-height: 480px; border-radius: 8px; }
+#preview blockquote { margin: 1em 0; padding: 0 0 0 14px; border-left: 3px solid var(--border); color: var(--muted); }
+#preview blockquote blockquote { margin-left: 0; }
+#preview pre { background: var(--code-bg); padding: 10px; border-radius: 8px; overflow: auto; font: 13px/1.4 var(--mono); }
+#preview hr { border: 0; border-top: 1px solid var(--border); margin: 1.5em 0; }
+[hidden] { display: none !important; }
+footer { margin: 20px 0 8px; color: var(--muted); font-size: .88rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>sky2md</h1>
+    <p>Turn a Bluesky thread into Markdown.</p>
+  </header>
+
+  <form id="urlForm">
+    <input id="url" type="url" required autocomplete="off" spellcheck="false"
+           placeholder="https://bsky.app/profile/…/post/…" aria-label="Bluesky post URL">
+    <button class="primary" id="go" type="submit">Convert</button>
+  </form>
+  <div id="status" role="status" aria-live="polite">Paste the link to any post in a thread.</div>
+
+  <main>
+    <form id="options" class="panel" aria-label="Output options">
+      <fieldset>
+        <legend>Thread</legend>
+        <label>Include
+          <select data-opt="mode">
+            <option value="thread">Author's thread only</option>
+            <option value="conversation">Thread + everyone's replies</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" data-opt="fromLinked"> Start at the linked post instead of the thread's first post</label>
+        <label class="check"><input type="checkbox" data-opt="stripCounters"> Remove thread counters (1/5, 2/ …)</label>
+      </fieldset>
+      <fieldset>
+        <legend>Header</legend>
+        <label>Title
+          <select data-opt="title">
+            <option value="first">First line of the thread</option>
+            <option value="author">“Thread by …”</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" data-opt="byline"> Byline (author, date, source link)</label>
+        <label class="check"><input type="checkbox" data-opt="frontMatter"> YAML front matter</label>
+      </fieldset>
+      <fieldset>
+        <legend>Posts</legend>
+        <label>Separate posts with
+          <select data-opt="separator">
+            <option value="blank">Blank line (continuous text)</option>
+            <option value="rule">Horizontal rule</option>
+            <option value="heading">Numbered heading</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" data-opt="postMeta"> Timestamp and link under each post</label>
+        <label class="check"><input type="checkbox" data-opt="hardBreaks"> Keep line breaks inside posts</label>
+        <label class="check"><input type="checkbox" data-opt="escape"> Escape Markdown characters in post text</label>
+      </fieldset>
+      <fieldset>
+        <legend>Media &amp; embeds</legend>
+        <label>Images and video
+          <select data-opt="images">
+            <option value="embed">Embed (![alt](url))</option>
+            <option value="link">Link only</option>
+            <option value="alt">Alt text only</option>
+            <option value="omit">Omit</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" data-opt="altText"> Include alt text</label>
+        <label>Link cards
+          <select data-opt="cards">
+            <option value="card">Title and description</option>
+            <option value="link">Title only</option>
+            <option value="omit">Omit</option>
+          </select>
+        </label>
+        <label>Quoted posts
+          <select data-opt="quotes">
+            <option value="full">Full quote</option>
+            <option value="link">Link only</option>
+            <option value="omit">Omit</option>
+          </select>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Links</legend>
+        <label class="check"><input type="checkbox" data-opt="fullUrls"> Show full URLs where Bluesky shortened them</label>
+        <label class="check"><input type="checkbox" data-opt="linkMentions"> Link @mentions</label>
+        <label class="check"><input type="checkbox" data-opt="linkTags"> Link #hashtags</label>
+        <label class="check"><input type="checkbox" data-opt="didLinks"> Permanent links (use DIDs, survive handle changes)</label>
+      </fieldset>
+      <button type="button" id="reset">Reset options</button>
+    </form>
+
+    <section class="panel" aria-label="Output">
+      <div class="toolbar">
+        <div class="tabs" role="group" aria-label="View">
+          <button type="button" id="tabMd" aria-pressed="true">Markdown</button>
+          <button type="button" id="tabPreview" aria-pressed="false">Preview</button>
+        </div>
+        <button type="button" id="copy" disabled>Copy</button>
+        <button type="button" id="download" disabled>Download .md</button>
+      </div>
+      <textarea id="out" spellcheck="false" aria-label="Markdown output" placeholder="Markdown will appear here. You can edit it before copying or downloading."></textarea>
+      <div id="preview" hidden></div>
+    </section>
+  </main>
+
+  <footer>
+    Everything happens in your browser: the only network requests go to Bluesky's public API, and images in the
+    preview load from Bluesky's CDN. Posts whose authors ask to be shown only to logged-in users are not converted.
+    This page is a single self-contained file —
+    <a id="selfDownload" href="" download="sky2md.html">download it</a> and it works offline from your disk
+    (internet is still needed to fetch threads).
+    <span id="repoLink" hidden>· <a href="" rel="noopener">Source</a></span>
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* sky2md — Bluesky thread to Markdown. Single file, no dependencies, no build step.
+   The conversion core below is DOM-free (see test/); the UI wiring is at the bottom. */
+
+// ---- Configuration ---------------------------------------------------------
+const API = 'https://public.api.bsky.app/xrpc/';   // Bluesky's public, unauthenticated AppView
+const WEB = 'https://bsky.app';                     // base for generated links
+const REPO_URL = 'https://github.com/jmkorhonen/sky2md';   // shown as "Source" in the footer; '' hides it
+const MAX_FETCHES = 100;                            // safety cap on API calls per conversion (~10 posts each)
+const MAX_REPLY_DEPTH = 8;                          // nesting cap for "everyone's replies"
+
+const DEFAULTS = {
+  mode: 'thread', fromLinked: false, stripCounters: true,
+  title: 'first', byline: true, frontMatter: false,
+  separator: 'blank', postMeta: false, hardBreaks: true, escape: true,
+  images: 'embed', altText: true, cards: 'card', quotes: 'full',
+  fullUrls: true, linkMentions: true, linkTags: false, didLinks: false,
+};
+
+// ---- Fetching ---------------------------------------------------------------
+async function xrpc(method, params) {
+  const res = await fetch(API + method + '?' + new URLSearchParams(params), { headers: { accept: 'application/json' } });
+  if (!res.ok) {
+    let info = {};
+    try { info = await res.json(); } catch (e) { /* non-JSON error body */ }
+    const err = new Error(info.message || `Bluesky API error (${res.status})`);
+    err.code = info.error; err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/** Accepts bsky.app-style URLs (any host), at:// URIs. Returns { actor, rkey } or null. */
+function parseInput(input) {
+  const s = String(input || '').trim();
+  let m = /^at:\/\/([^/\s]+)\/app\.bsky\.feed\.post\/([^/?#\s]+)/.exec(s)
+       || /\/profile\/([^/\s]+)\/post\/([^/?#\s]+)/.exec(s);
+  if (!m) return null;
+  return { actor: decodeURIComponent(m[1]).replace(/^@/, ''), rkey: m[2] };
+}
+
+const isView = n => !!n && n.$type === 'app.bsky.feed.defs#threadViewPost' && !!n.post;
+const views = list => (list || []).filter(isView);
+const didOf = uri => (/^at:\/\/([^/]+)/.exec(uri || '') || [])[1];
+const rkeyOf = uri => String(uri || '').split('/').pop();
+const loginOnly = author => ((author && author.labels) || []).some(l => l.val === '!no-unauthenticated');
+const createdAt = post => (post.record && post.record.createdAt) || post.indexedAt || '';
+
+/**
+ * Loads the thread around the given post: climbs to the first post of the author's
+ * self-reply chain, then follows the author's replies down to the end.
+ * Returns { author, chain: [threadViewPost…], linkedIndex }.
+ */
+async function loadThread(input, onProgress) {
+  const ref = parseInput(input);
+  if (!ref) throw new Error('That doesn’t look like a Bluesky post link. Expected something like https://bsky.app/profile/name/post/abc123');
+  let fetches = 0;
+  const say = msg => { if (onProgress) onProgress(msg); };
+  const getThread = async uri => {
+    fetches++;
+    const r = await xrpc('app.bsky.feed.getPostThread', { uri, depth: 1000, parentHeight: 1000 });
+    return r.thread;
+  };
+
+  let did = ref.actor;
+  if (!did.startsWith('did:')) {
+    say('Looking up @' + ref.actor + '…');
+    did = (await xrpc('com.atproto.identity.resolveHandle', { handle: ref.actor })).did;
+  }
+  const linkedUri = `at://${did}/app.bsky.feed.post/${ref.rkey}`;
+
+  say('Fetching thread…');
+  let node = await getThread(linkedUri);
+  if (!isView(node)) {
+    throw new Error(node && /blocked/i.test(node.$type || '') ? 'This post is not available (blocked).' : 'Post not found. It may have been deleted.');
+  }
+  if (loginOnly(node.post.author)) {
+    throw new Error('The author of this thread has asked Bluesky to show their posts only to logged-in users, so sky2md will not convert it.');
+  }
+
+  // Climb to the top of the self-reply chain, remembering the path so we come back down the same way.
+  const path = new Set([node.post.uri]);
+  let top = node;
+  for (;;) {
+    while (isView(top.parent) && top.parent.post.author.did === did) { top = top.parent; path.add(top.post.uri); }
+    const parentUri = top.post.record && top.post.record.reply && top.post.record.reply.parent && top.post.record.reply.parent.uri;
+    if (!top.parent && parentUri && didOf(parentUri) === did) {   // parents were truncated by the API
+      const more = await getThread(top.post.uri);
+      if (isView(more) && isView(more.parent)) { top = more; continue; }
+    }
+    break;
+  }
+  if (top.post.uri !== linkedUri) top = await getThread(top.post.uri);   // parents come without their replies
+  if (!isView(top)) throw new Error('Could not load the beginning of this thread.');
+
+  // Walk down: at each post follow the author's own reply.
+  const lengths = new Map();
+  const chainLength = n => {
+    if (lengths.has(n)) return lengths.get(n);
+    const len = 1 + Math.max(0, ...views(n.replies).filter(r => r.post.author.did === did).map(chainLength));
+    lengths.set(n, len);
+    return len;
+  };
+  const pickNext = n => {
+    const own = views(n.replies).filter(r => r.post.author.did === did);
+    return own.find(r => path.has(r.post.uri))
+        || own.sort((a, b) => chainLength(b) - chainLength(a) || createdAt(a.post).localeCompare(createdAt(b.post)))[0];
+  };
+  const chain = [];
+  let truncated = false;
+  for (let cur = top; cur;) {
+    chain.push(cur);
+    let next = pickNext(cur);
+    if (!next && cur.post.replyCount > 0 && !(cur.replies && cur.replies.length) && chain.length > 1) {
+      if (fetches >= MAX_FETCHES) { truncated = true; break; }
+      say(`Fetching more… (${chain.length} posts so far)`);             // replies were truncated by the API
+      const more = await getThread(cur.post.uri);
+      if (isView(more)) { cur.replies = more.replies; next = pickNext(cur); }
+    }
+    cur = next;
+  }
+  return { author: top.post.author, chain, truncated, linkedIndex: Math.max(0, chain.findIndex(n => n.post.uri === linkedUri)) };
+}
+
+// ---- Markdown helpers ------------------------------------------------------
+const enc = new TextEncoder(), dec = new TextDecoder();
+const byteLen = s => enc.encode(s).length;
+const isAlnum = c => !!c && /[\p{L}\p{N}]/u.test(c);
+
+function escMd(s) {
+  return String(s)
+    .replace(/[\\`*\[\]<>~]/g, '\\$&')
+    .replace(/_/g, (c, i, all) => (isAlnum(all[i - 1]) && isAlnum(all[i + 1])) ? c : '\\_')
+    .replace(/&(?=#?\w+;)/g, '\\&');
+}
+/** Escapes characters that only matter at the start of a line (headings, lists, rules). */
+function escLineStarts(s) {
+  return s.replace(/^(\s*)(#{1,6}(?=\s|$)|[-+](?=\s)|(?:-{3,}|={3,})\s*$)/gm, '$1\\$2')
+          .replace(/^(\s*\d+)([.)])(?=\s)/gm, '$1\\$2');
+}
+const escLinkText = s => String(s).replace(/[\\\[\]]/g, '\\$&');
+const oneLine = s => String(s || '').replace(/\s+/g, ' ').trim();
+const isHttp = u => /^https?:\/\//i.test(u || '');
+const mdUrl = u => String(u).replace(/[()\s<>*\\]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+const link = (text, url) => isHttp(url) ? `[${text}](${mdUrl(url)})` : text;
+const quote = s => s.split('\n').map(l => l ? '> ' + l : '>').join('\n');
+
+function fmtDate(iso, withTime) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const s = d.toISOString();
+  return withTime ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : s.slice(0, 10);
+}
+
+const actorId = (a, o) => (o.didLinks || !a.handle || a.handle === 'handle.invalid') ? a.did : a.handle;
+const profileUrl = (a, o) => `${WEB}/profile/${actorId(a, o)}`;
+const postUrl = (uri, a, o) => `${profileUrl(a, o)}/post/${rkeyOf(uri)}`;
+const handleOf = a => (a.handle && a.handle !== 'handle.invalid') ? '@' + a.handle : a.did;
+const nameOf = a => oneLine(a.displayName) || handleOf(a);
+
+/** Renders post text with its facets (links, mentions, hashtags). Facet offsets are UTF-8 bytes. */
+function richText(text, facets, o) {
+  const bytes = enc.encode(text || '');
+  const plain = s => o.escape ? escMd(s) : s;
+  const label = s => o.escape ? escMd(s) : escLinkText(s);
+  const sorted = (facets || [])
+    .filter(f => f && f.index && Array.isArray(f.features))
+    .sort((a, b) => a.index.byteStart - b.index.byteStart);
+  let out = '', pos = 0;
+  for (const f of sorted) {
+    const { byteStart: start, byteEnd: end } = f.index;
+    if (!(start >= pos && end > start && end <= bytes.length)) continue;   // overlapping or malformed
+    const seg = dec.decode(bytes.slice(start, end));
+    let md = null;
+    for (const feat of f.features) {
+      const type = feat.$type || '';
+      if (type.endsWith('#link') && isHttp(feat.uri)) {
+        md = (o.fullUrls && /(\.\.\.|…)$/.test(seg)) ? `<${mdUrl(feat.uri)}>` : link(label(seg), feat.uri);
+      } else if (type.endsWith('#mention') && o.linkMentions && feat.did) {
+        const handle = /^@[\w.-]+\.[\w-]+$/.test(seg) && !o.didLinks ? seg.slice(1) : feat.did;
+        md = link(label(seg), `${WEB}/profile/${handle}`);
+      } else if (type.endsWith('#tag') && o.linkTags && feat.tag) {
+        md = link(label(seg), `${WEB}/hashtag/${encodeURIComponent(feat.tag)}`);
+      }
+      if (md) break;
+    }
+    out += plain(dec.decode(bytes.slice(pos, start))) + (md || plain(seg));
+    pos = end;
+  }
+  return out + plain(dec.decode(bytes.slice(pos)));
+}
+
+function formatText(md, o) {
+  let s = md.replace(/\r\n?/g, '\n').replace(/[​﻿]/g, '').split('\n').map(l => l.trim()).join('\n').trim().replace(/\n{3,}/g, '\n\n');
+  if (o.escape) s = escLineStarts(s);
+  if (o.hardBreaks) s = s.replace(/([^\n])\n(?=[^\n])/g, '$1  \n');
+  return s;
+}
+
+/**
+ * Removes "3/12", "3/", "(3/12)" style counters from the start or end of a post — but only
+ * when the number matches the post's actual position, so "24/7" or "9/11" survive.
+ */
+function stripCounter(text, facets, position) {
+  const ok = m => m && +m[1] === position && (!m[2] || +m[2] >= +m[1]);
+  const num = '[(\\[]?(\\d{1,3})\\s*\\/\\s*(\\d{1,3})?[)\\]]?';
+  let m = new RegExp(`(?:^|\\s)(?:🧵\\s*)?${num}(?:\\s*🧵)?\\s*$`, 'u').exec(text);
+  if (ok(m)) {
+    const t = text.slice(0, m.index), len = byteLen(t);
+    return { text: t, facets: (facets || []).filter(f => f.index && f.index.byteEnd <= len) };
+  }
+  m = new RegExp(`^\\s*${num}(?:[:.\\-–—]*\\s+|$)`, 'u').exec(text);
+  if (ok(m)) {
+    const cut = byteLen(m[0]);
+    return {
+      text: text.slice(m[0].length),
+      facets: (facets || []).filter(f => f.index && f.index.byteStart >= cut)
+        .map(f => ({ ...f, index: { byteStart: f.index.byteStart - cut, byteEnd: f.index.byteEnd - cut } })),
+    };
+  }
+  return { text, facets };
+}
+
+// ---- Embeds ----------------------------------------------------------------
+function renderImage(url, alt, kind, o, href) {
+  const a = o.altText ? oneLine(alt) : '';
+  switch (o.images) {
+    case 'embed': { const img = `![${escLinkText(a)}](${mdUrl(url)})`; return href ? link(img, href) : img; }
+    case 'link':  return link(escLinkText(a ? `${kind}: ${a}` : kind), href || url);
+    case 'alt':   return a ? `*\\[${kind}: ${escMd(a)}\\]*` : '';
+    default:      return '';
+  }
+}
+
+function renderAttribution(author, uri, when, o) {
+  if (loginOnly(author)) return null;
+  const date = fmtDate(when);
+  return `**${escMd(nameOf(author))}** (${link(escLinkText(handleOf(author)), profileUrl(author, o))})`
+       + (date ? ` · ${link(date, postUrl(uri, author, o))}` : '');
+}
+const LOGIN_ONLY_NOTE = '*\\[This author’s posts are only shown to logged-in users\\]*';
+
+function renderQuotedRecord(rec, o, depth) {
+  const type = rec.$type || '';
+  if (o.quotes === 'omit') return [];
+  if (type.endsWith('#viewRecord')) {
+    const url = postUrl(rec.uri, rec.author, o);
+    if (loginOnly(rec.author)) return [quote(LOGIN_ONLY_NOTE)];
+    if (o.quotes === 'link' || depth > 0) return [quote(`${link('Quoted post', url)} by ${escMd(nameOf(rec.author))}`)];
+    const value = rec.value || {};
+    const blocks = [renderAttribution(rec.author, rec.uri, value.createdAt || rec.indexedAt, o) + ':'];
+    const body = formatText(richText(value.text, value.facets, o), o);
+    if (body) blocks.push(body);
+    blocks.push(...renderEmbed((rec.embeds || [])[0], o, url, depth + 1));
+    return [quote(blocks.join('\n\n'))];
+  }
+  if (type.endsWith('#viewNotFound')) return [quote('*Quoted post not found*')];
+  if (type.endsWith('#viewBlocked')) return [quote('*Quoted post unavailable*')];
+  if (type.endsWith('#viewDetached')) return [quote('*Quoted post removed by its author*')];
+  // Feeds, lists, starter packs, labelers
+  const d = didOf(rec.uri), k = rkeyOf(rec.uri);
+  const kinds = [
+    ['generatorView', 'Feed', `${WEB}/profile/${d}/feed/${k}`, rec.displayName],
+    ['listView', 'List', `${WEB}/profile/${d}/lists/${k}`, rec.name],
+    ['starterPackView', 'Starter pack', `${WEB}/starter-pack/${d}/${k}`, rec.record && rec.record.name],
+    ['labelerView', 'Labeler', `${WEB}/profile/${d}`, rec.creator && nameOf(rec.creator)],
+  ];
+  const hit = kinds.find(x => type.includes(x[0]));
+  return hit ? [quote(`${hit[1]}: ${link(escMd(oneLine(hit[3]) || hit[1]), hit[2])}`)] : [];
+}
+
+function renderEmbed(embed, o, url, depth) {
+  if (!embed) return [];
+  const type = embed.$type || '';
+  const blocks = [];
+  if (type.startsWith('app.bsky.embed.images')) {
+    const imgs = (embed.images || []).map(i => renderImage(i.fullsize || i.thumb, i.alt, 'Image', o)).filter(Boolean);
+    if (imgs.length) blocks.push(imgs.join(o.images === 'embed' ? '\n' : '  \n'));
+  } else if (type.startsWith('app.bsky.embed.video')) {
+    // Markdown can't embed the HLS stream, so show the thumbnail linked to the post.
+    const v = embed.thumbnail ? renderImage(embed.thumbnail, embed.alt || 'Video', 'Video', { ...o, altText: true }, url)
+                              : (o.images === 'omit' ? '' : link('Video', url));
+    if (v) blocks.push(v);
+  } else if (type.startsWith('app.bsky.embed.external')) {
+    const ext = embed.external || {};
+    if (/^https:\/\/media\.tenor\.com\//.test(ext.uri || '')) {           // GIF picker posts
+      const gif = renderImage(ext.uri, ext.description || ext.title, 'GIF', o);
+      if (gif) blocks.push(gif);
+    } else if (o.cards !== 'omit' && isHttp(ext.uri)) {
+      let card = `**${link(escMd(oneLine(ext.title) || ext.uri), ext.uri)}**`;
+      if (o.cards === 'card' && oneLine(ext.description)) card += '  \n' + escMd(oneLine(ext.description));
+      blocks.push(quote(card));
+    }
+  } else if (type.startsWith('app.bsky.embed.recordWithMedia')) {
+    blocks.push(...renderEmbed(embed.media, o, url, depth));
+    if (embed.record && embed.record.record) blocks.push(...renderQuotedRecord(embed.record.record, o, depth));
+  } else if (type.startsWith('app.bsky.embed.record')) {
+    if (embed.record) blocks.push(...renderQuotedRecord(embed.record, o, depth));
+  }
+  return blocks;
+}
+
+// ---- Assembly --------------------------------------------------------------
+/** position: 1-based place in the author's chain (enables counter stripping), or 0. */
+function renderPost(post, o, position) {
+  const rec = post.record || {};
+  let text = rec.text || '', facets = rec.facets || [];
+  if (o.stripCounters && position) ({ text, facets } = stripCounter(text, facets, position));
+  const blocks = [];
+  const body = formatText(richText(text, facets, o), o);
+  if (body) blocks.push(body);
+  blocks.push(...renderEmbed(post.embed, o, postUrl(post.uri, post.author, o), 0));
+  return blocks.join('\n\n');
+}
+
+/** A reply (and the replies under it), for "everyone's replies" mode. Caller blockquotes it. */
+function renderBranch(node, o, depth) {
+  const p = node.post;
+  if (loginOnly(p.author)) return LOGIN_ONLY_NOTE;
+  const blocks = [renderAttribution(p.author, p.uri, createdAt(p), o) + ':', renderPost(p, o, 0)];
+  if (depth < MAX_REPLY_DEPTH) {
+    for (const r of sortByTime(views(node.replies))) blocks.push(quote(renderBranch(r, o, depth + 1)));
+  }
+  return blocks.filter(Boolean).join('\n\n');
+}
+const sortByTime = nodes => nodes.slice().sort((a, b) => createdAt(a.post).localeCompare(createdAt(b.post)));
+
+function threadTitle(data, o, first) {
+  const name = nameOf(data.author);
+  if (o.title !== 'author') {
+    let text = (first.post.record && first.post.record.text) || '';
+    if (o.stripCounters) text = stripCounter(text, [], data.chain.indexOf(first) + 1).text;
+    let line = oneLine(text.trim().split('\n')[0].replace(/🧵/gu, ''));
+    if (line.length > 80) line = line.slice(0, 80).replace(/\s+\S*$/, '') + '…';
+    if (line) return line;
+  }
+  return `Thread by ${name}`;
+}
+
+function buildMarkdown(data, opts) {
+  const o = { ...DEFAULTS, ...opts };
+  const chain = o.fromLinked ? data.chain.slice(data.linkedIndex) : data.chain;
+  const first = chain[0], author = data.author;
+  const sourceUrl = postUrl(first.post.uri, author, o);
+  const title = threadTitle(data, o, first);
+  const date = fmtDate(createdAt(first.post));
+  const parts = [];
+
+  if (o.frontMatter) {
+    parts.push(['---',
+      `title: ${JSON.stringify(title)}`,
+      `author: ${JSON.stringify(nameOf(author))}`,
+      `handle: ${JSON.stringify(handleOf(author))}`,
+      date ? `date: ${date}` : null,
+      `source: ${JSON.stringify(sourceUrl)}`,
+      `posts: ${chain.length}`,
+      '---'].filter(Boolean).join('\n'));
+  }
+  if (o.title !== 'none') parts.push('# ' + escLineStarts(escMd(title)));
+  if (o.byline) {
+    parts.push([`By ${link(escMd(nameOf(author)), profileUrl(author, o))} (${escMd(handleOf(author))})`,
+      date, link('Original thread on Bluesky', sourceUrl)].filter(Boolean).join(' · '));
+  }
+
+  const posts = [];
+  chain.forEach((node, i) => {
+    const position = data.chain.indexOf(node) + 1;
+    const blocks = [];
+    if (o.separator === 'heading') blocks.push(`## ${position}`);
+    blocks.push(renderPost(node.post, o, position));
+    if (o.postMeta) blocks.push(`*${link(`#${position} · ${fmtDate(createdAt(node.post), true)}`, postUrl(node.post.uri, author, o))}*`);
+    if (o.mode === 'conversation') {
+      for (const r of sortByTime(views(node.replies).filter(r => r !== chain[i + 1]))) blocks.push(quote(renderBranch(r, o, 1)));
+    }
+    const block = blocks.filter(Boolean).join('\n\n');
+    if (block) posts.push(block);
+  });
+  parts.push(posts.join(o.separator === 'rule' ? '\n\n---\n\n' : '\n\n'));
+  return parts.filter(Boolean).join('\n\n') + '\n';
+}
+
+// ---- Minimal Markdown preview (covers what buildMarkdown emits) ---------------
+const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const unescMd = s => s.replace(/\\([!-\/:-@\[-`{-~])/g, '$1');
+
+function parseMdLink(s, i) {           // s[i] === '['  →  { text, url, end } | null
+  let depth = 0, j = i;
+  for (; j < s.length; j++) {
+    if (s[j] === '\\') j++;
+    else if (s[j] === '[') depth++;
+    else if (s[j] === ']' && --depth === 0) break;
+  }
+  if (j >= s.length || s[j + 1] !== '(') return null;
+  const close = s.indexOf(')', j + 2);
+  if (close < 0 || /\s/.test(s.slice(j + 2, close))) return null;
+  return { text: s.slice(i + 1, j), url: s.slice(j + 2, close), end: close + 1 };
+}
+function findClose(s, from, marker) {
+  for (let j = from; j < s.length; j++) {
+    if (s[j] === '\\') j++;
+    else if (s[j] === '[') { const l = parseMdLink(s, j); if (l) j = l.end - 1; }
+    else if (s.startsWith(marker, j) && j > from) return j;
+  }
+  return -1;
+}
+function mdInline(s) {
+  let out = '';
+  for (let i = 0; i < s.length;) {
+    const c = s[i];
+    let l, j;
+    if (c === '\\' && /[!-\/:-@\[-`{-~]/.test(s[i + 1] || '')) { out += escHtml(s[i + 1]); i += 2; }
+    else if (c === '!' && s[i + 1] === '[' && (l = parseMdLink(s, i + 1))) {
+      out += `<img loading="lazy" alt="${escHtml(unescMd(l.text))}" src="${escHtml(isHttp(l.url) ? l.url : '')}">`; i = l.end;
+    } else if (c === '[' && (l = parseMdLink(s, i))) {
+      out += `<a href="${escHtml(isHttp(l.url) ? l.url : '#')}" target="_blank" rel="noopener noreferrer">${mdInline(l.text)}</a>`; i = l.end;
+    } else if (c === '<' && (l = /^<(https?:\/\/[^\s<>]+)>/i.exec(s.slice(i, i + 2100)))) {
+      out += `<a href="${escHtml(l[1])}" target="_blank" rel="noopener noreferrer">${escHtml(l[1])}</a>`; i += l[0].length;
+    } else if (s.startsWith('**', i) && (j = findClose(s, i + 2, '**')) > 0) { out += `<strong>${mdInline(s.slice(i + 2, j))}</strong>`; i = j + 2; }
+    else if (c === '*' && (j = findClose(s, i + 1, '*')) > 0) { out += `<em>${mdInline(s.slice(i + 1, j))}</em>`; i = j + 1; }
+    else if (c === ' ' && (l = /^ {2,}\n/.exec(s.slice(i, i + 80)))) { out += '<br>\n'; i += l[0].length; }
+    else { out += escHtml(c); i++; }
+  }
+  return out;
+}
+function mdBlocks(lines) {
+  let html = '';
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i];
+    let m;
+    if (!line.trim()) { i++; }
+    else if (line.startsWith('>')) {
+      const inner = [];
+      while (i < lines.length && lines[i].startsWith('>')) inner.push(lines[i++].replace(/^> ?/, ''));
+      html += `<blockquote>${mdBlocks(inner)}</blockquote>\n`;
+    } else if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) { html += `<h${m[1].length}>${mdInline(m[2])}</h${m[1].length}>\n`; i++; }
+    else if (/^(-{3,}|\*{3,})\s*$/.test(line)) { html += '<hr>\n'; i++; }
+    else {
+      const para = [];
+      while (i < lines.length && lines[i].trim() && !/^(>|#{1,6}\s|-{3,}\s*$)/.test(lines[i])) para.push(lines[i++]);
+      html += `<p>${mdInline(para.join('\n'))}</p>\n`;
+    }
+  }
+  return html;
+}
+function mdToHtml(md) {
+  let front = '';
+  md = md.replace(/\r\n?/g, '\n').replace(/^---\n[\s\S]*?\n---\n/, m => { front = `<pre>${escHtml(m.trim())}</pre>\n`; return ''; });
+  return front + mdBlocks(md.split('\n'));
+}
+
+// ---- UI ----------------------------------------------------------------------
+function initUI() {
+  const $ = id => document.getElementById(id);
+  const STORE = 'sky2md.options';
+  const inputs = [...document.querySelectorAll('[data-opt]')];
+  const state = { data: null, filename: 'thread.md' };
+
+  const readOptions = () => Object.fromEntries(inputs.map(el => [el.dataset.opt, el.type === 'checkbox' ? el.checked : el.value]));
+  const writeOptions = o => inputs.forEach(el => {
+    const v = o[el.dataset.opt];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if ([...el.options].some(opt => opt.value === v)) el.value = v;
+  });
+  const setStatus = (msg, isError) => { $('status').textContent = msg; $('status').classList.toggle('error', !!isError); };
+
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(STORE)) || {}; } catch (e) { /* storage unavailable */ }
+  writeOptions({ ...DEFAULTS, ...saved });
+
+  function showPreview(on) {
+    $('tabMd').setAttribute('aria-pressed', String(!on));
+    $('tabPreview').setAttribute('aria-pressed', String(on));
+    $('out').hidden = on; $('preview').hidden = !on;
+    if (on) $('preview').innerHTML = mdToHtml($('out').value);
+  }
+  function render() {
+    if (!state.data) return;
+    $('out').value = buildMarkdown(state.data, readOptions());
+    $('copy').disabled = $('download').disabled = false;
+    if (!$('preview').hidden) showPreview(true);
+  }
+
+  async function convert(url) {
+    $('go').disabled = true;
+    try {
+      const data = await loadThread(url, setStatus);
+      state.data = data;
+      const a = data.author;
+      state.filename = `${(a.handle && a.handle !== 'handle.invalid' ? a.handle : 'thread')}-${rkeyOf(data.chain[0].post.uri)}.md`.replace(/[^\w.-]+/g, '_');
+      render();
+      const n = data.chain.length;
+      setStatus(`Converted ${n} post${n === 1 ? '' : 's'} by ${handleOf(a)}.` + (n === 1 ? ' (No self-replies found — this post is not part of a longer thread.)' : '')
+        + (data.truncated ? ' The thread is longer than sky2md fetches in one go; convert again from its last post to get the rest.' : ''), data.truncated);
+      try { history.replaceState(null, '', '?url=' + encodeURIComponent(url)); } catch (e) { /* file:// in some browsers */ }
+    } catch (err) {
+      const offline = err instanceof TypeError;
+      setStatus(offline ? 'Could not reach Bluesky. Check your connection (or a content blocker) and try again.'
+        : /resolve handle|profile not found/i.test(err.message) ? 'Could not find that Bluesky account.'
+        : err.message, true);
+    } finally {
+      $('go').disabled = false;
+    }
+  }
+
+  $('urlForm').addEventListener('submit', e => { e.preventDefault(); convert($('url').value); });
+  $('options').addEventListener('change', () => {
+    try { localStorage.setItem(STORE, JSON.stringify(readOptions())); } catch (e) { /* storage unavailable */ }
+    render();
+  });
+  $('reset').addEventListener('click', () => { writeOptions(DEFAULTS); $('options').dispatchEvent(new Event('change')); });
+  $('tabMd').addEventListener('click', () => showPreview(false));
+  $('tabPreview').addEventListener('click', () => showPreview(true));
+
+  $('copy').addEventListener('click', async () => {
+    const text = $('out').value;
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { showPreview(false); $('out').select(); document.execCommand('copy'); }
+    $('copy').textContent = 'Copied!';
+    setTimeout(() => { $('copy').textContent = 'Copy'; }, 1500);
+  });
+  $('download').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([$('out').value], { type: 'text/markdown;charset=utf-8' }));
+    a.download = state.filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  $('selfDownload').href = location.href.split(/[?#]/)[0];
+  if (REPO_URL) { $('repoLink').hidden = false; $('repoLink').querySelector('a').href = REPO_URL; }
+
+  const preset = new URLSearchParams(location.search).get('url');
+  if (preset) { $('url').value = preset; convert(preset); }
+}
+
+if (typeof document !== 'undefined') initUI();
+if (typeof module !== 'undefined') module.exports = { parseInput, loadThread, buildMarkdown, richText, stripCounter, escMd, escLineStarts, mdToHtml, DEFAULTS };
+</script>
+</body>
+</html>
