@@ -12,16 +12,19 @@ self-reply chain, follows it to the end, and renders it as one document.
 
 - Author's thread only, or the thread plus everyone's replies (nested blockquotes)
 - Title, byline and optional YAML front matter (handy for Obsidian, Hugo, Jekyll, …)
+- Choose the heading level (H1–H4) so the thread fits into an existing document
 - Posts joined as continuous text, separated by rules, or under numbered headings
 - Optional timestamp + permalink under each post
 - Removes `1/5`-style thread counters (only when the number matches the post's position)
 - Images and video thumbnails: embed, link, alt text only, or omit
 - Image galleries, link cards, quoted posts, GIFs, feeds/lists/starter packs
 - Restores full URLs where Bluesky shortened them; optional @mention and #hashtag links
+- Optionally drop the `@` and `#` signs, e.g. when your notes app has its own tag syntax
+- Emoji: keep, remove (with tidy spacing), or convert to `:shortcodes:`
 - Optional permanent DID-based links that survive handle changes
 - Escapes Markdown special characters in post text, keeps line breaks
 - Live preview, copy to clipboard, download as `.md`; the output is editable
-- Options are remembered in the browser; `?url=<post link>` converts on load (bookmarkable)
+- Options are remembered in your browser (localStorage, nothing leaves the device); `?url=<post link>` converts on load (bookmarkable)
 - Bookmarklet (in the page footer): click it while viewing a Bluesky post to convert its thread
 
 ## Design: nothing to maintain
@@ -54,6 +57,12 @@ replies are replaced by a note.
 
 Image links in the Markdown point to Bluesky's CDN; they are not downloaded. Converting a
 thread doesn't change who owns it — ask before republishing other people's writing.
+
+## Credits
+
+Emoji shortcodes come from [emojibase-data](https://emojibase.dev) (MIT), embedded in
+`index.html`. When Unicode adds emoji you want converted, refresh the table with
+`node tools/emoji-data.js [version]`; until then, unknown emoji are simply kept as they are.
 
 ## Limits
 

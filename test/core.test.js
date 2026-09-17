@@ -1,7 +1,7 @@
 // Offline tests for the conversion core.  Run:  node --test
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseInput, buildMarkdown, richText, stripCounter, escMd, escLineStarts, mdToHtml, DEFAULTS } = require('./load.js');
+const { parseInput, buildMarkdown, richText, stripCounter, escMd, escLineStarts, mdToHtml, convertEmoji, DEFAULTS } = require('./load.js');
 
 const enc = new TextEncoder();
 const VIEW = 'app.bsky.feed.defs#threadViewPost';
@@ -49,6 +49,49 @@ test('richText maps byte-offset facets correctly around multibyte text', () => {
     'Héllo 🌍 see <https://example.com/a/very/long_path%281%29> and [@bob.test](https://bsky.app/profile/bob.test) [#tag](https://bsky.app/hashtag/tag)');
   assert.equal(richText(text, facets, { ...DEFAULTS, fullUrls: false, linkMentions: false, didLinks: true }),
     'Héllo 🌍 see [example.com/a...](https://example.com/a/very/long_path%281%29) and @bob.test #tag');
+});
+
+test('richText can drop the @ and # signs, linked or not', () => {
+  const text = 'Hi @bob.test #Obsidian #1 and C#';
+  const facets = [
+    facet(text, '@bob.test', { $type: 'app.bsky.richtext.facet#mention', did: 'did:plc:bob' }),
+    facet(text, '#Obsidian', { $type: 'app.bsky.richtext.facet#tag', tag: 'Obsidian' }),
+  ];
+  const strip = { ...DEFAULTS, stripAt: true, stripHash: true };
+  assert.equal(richText(text, facets, { ...strip, linkMentions: false }), 'Hi bob.test Obsidian #1 and C#');
+  assert.equal(richText(text, facets, { ...strip, linkTags: true }),
+    'Hi [bob.test](https://bsky.app/profile/bob.test) [Obsidian](https://bsky.app/hashtag/Obsidian) #1 and C#');
+  assert.equal(richText(text, facets, DEFAULTS), 'Hi [@bob.test](https://bsky.app/profile/bob.test) #Obsidian #1 and C#');
+  const md = buildMarkdown(thread(node(alice, 'x')), { stripAt: true, frontMatter: true });
+  assert.ok(!md.includes('@') && md.includes('handle: "alice.test"') && md.includes('(alice.test)'));
+});
+
+test('emoji: remove tidies spacing, shortcodes cover sequences, text symbols survive', () => {
+  assert.equal(convertEmoji('👋 Hello 👋 world 🎉', 'strip'), 'Hello world');
+  assert.equal(convertEmoji('✨Special✨  \n> 🌈 quoted\n\n🎉🎉\n\n# ✨ Title', 'strip'), 'Special  \n> quoted\n\n# Title');
+  assert.equal(convertEmoji('👍🏽 ❤️ 🇫🇮 1️⃣ 👨‍👩‍👧 🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'shortcode'), ':thumbsup: :heart: :finland: :one: :family_man_woman_girl: :scotland:');
+  assert.equal(convertEmoji('"Party 🎉" and [x 🌈] ok 👍, fine 🙂.', 'strip'), '"Party" and [x] ok, fine.');
+  assert.equal(convertEmoji('© 2026 ™ ☺ 5€ #1', 'strip'), '© 2026 ™ ☺ 5€ #1');
+  assert.equal(convertEmoji('keep 😀', 'keep'), 'keep 😀');
+});
+
+test('emoji option applies to titles, names and text but never inside URLs', () => {
+  const party = { did: 'did:plc:party', handle: 'party.test', displayName: 'Party 🎉' };
+  const text = '🎉 Launch day see 👍.ws';
+  const data = thread(node(party, text, { facets: [facet(text, '👍.ws', { $type: 'app.bsky.richtext.facet#link', uri: 'https://👍.ws/' })] }));
+  const md = buildMarkdown(data, { emoji: 'strip', frontMatter: true });
+  assert.ok(md.includes('title: "Launch day see.ws"') && md.includes('author: "Party"'));
+  assert.ok(md.includes('# Launch day see.ws') && md.includes('By [Party](https://bsky.app/profile/party.test)'));
+  assert.ok(md.includes('[.ws](https://%F0%9F%91%8D.ws/)'));
+  assert.ok(buildMarkdown(data, { emoji: 'shortcode' }).includes('# :tada: Launch day see :thumbsup:.ws'));
+});
+
+test('heading level sets the title and the numbered post headings below it', () => {
+  const data = thread(node(alice, 'One'), node(alice, 'Two'));
+  const md = buildMarkdown(data, { headingLevel: '3', separator: 'heading', byline: false });
+  assert.match(md, /^### One\n\n#### 1\n\nOne\n\n#### 2\n\nTwo\n$/);
+  assert.match(buildMarkdown(data, { headingLevel: '2', separator: 'heading', title: 'none', byline: false }), /^## 1\n/);
+  assert.match(buildMarkdown(data, {}), /^# One\n/);
 });
 
 test('richText ignores malformed facets and non-http links', () => {

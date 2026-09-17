@@ -8,9 +8,9 @@ if (!actors.length) actors.push('bsky.app', 'pfrazee.com', 'nasa.gov', 'theonion
 
 const OPTION_SETS = [
   {},
-  { mode: 'conversation', separator: 'heading', postMeta: true, frontMatter: true, linkTags: true, didLinks: true },
-  { images: 'link', cards: 'link', quotes: 'link', fullUrls: false, escape: false, hardBreaks: false, stripCounters: false },
-  { images: 'alt', title: 'author', separator: 'rule', fromLinked: true, altText: false },
+  { mode: 'conversation', separator: 'heading', postMeta: true, frontMatter: true, linkTags: true, didLinks: true, emoji: 'shortcode', headingLevel: '2' },
+  { images: 'link', cards: 'link', quotes: 'link', fullUrls: false, escape: false, hardBreaks: false, stripCounters: false, stripAt: true, stripHash: true },
+  { images: 'alt', title: 'author', separator: 'rule', fromLinked: true, altText: false, emoji: 'strip' },
   { images: 'omit', cards: 'omit', quotes: 'omit', title: 'none', byline: false, linkMentions: false },
 ];
 const SUSPICIOUS = /undefined|\[object |NaN|\bnull\b|\]\(\)|\(https?:\/\/[^)\s]*\s/;
